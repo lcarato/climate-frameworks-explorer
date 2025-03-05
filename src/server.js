@@ -275,7 +275,8 @@ app.get('/api/frameworks/:id/comparison', async (req, res) => {
 });
 
 /**
- * API endpoint to compare multiple frameworks
+ * Enhanced API endpoint to compare multiple frameworks
+ * This implementation improves performance by loading all data in one query
  */
 app.get('/api/frameworks/compare', async (req, res) => {
   try {
@@ -287,56 +288,53 @@ app.get('/api/frameworks/compare', async (req, res) => {
     }
     
     const frameworkIds = ids.split(',');
+    
+    // Get comparison data for all frameworks in one query for better performance
+    const [comparisons] = await pool.query(`
+      SELECT fc.framework_id, fc.criteria_key, fc.criteria_value
+      FROM framework_comparisons fc
+      WHERE fc.framework_id IN (?) AND fc.language_id = ?
+    `, [frameworkIds, language]);
+    
+    // Format the results into a structured response
     const results = {};
     
-    // Get comparison data for each framework
-    for (const id of frameworkIds) {
-      // Get comparison data from the framework_comparisons table
-      const [comparisons] = await pool.query(`
-        SELECT criteria_key, criteria_value
-        FROM framework_comparisons
-        WHERE framework_id = ? AND language_id = ?
-      `, [id, language]);
-      
-      if (comparisons.length > 0) {
-        const frameworkData = {};
-        comparisons.forEach(row => {
-          frameworkData[row.criteria_key] = row.criteria_value;
-        });
-        results[id] = frameworkData;
-      } else {
-        // If no comparison data exists, generate basic comparison data
-        const [framework] = await pool.query(`
-          SELECT ft.adaptation_definition, ft.regulatory_status
-          FROM frameworks f
-          JOIN framework_translations ft ON f.id = ft.framework_id
-          WHERE f.id = ? AND ft.language_id = ?
-        `, [id, language]);
-        
-        if (framework.length > 0) {
-          results[id] = {
-            adaptationDefinition: framework[0].adaptation_definition || '',
-            regulatoryStatus: framework[0].regulatory_status || '',
-            technicalSpecificity: 'No detailed information available',
-            energyStorageCriteria: 'No detailed information available',
-            transportCriteria: 'No detailed information available',
-            buildingCriteria: 'No detailed information available',
-            waterCriteria: 'No detailed information available',
-            implementationRequirements: 'No detailed information available'
-          };
-        } else {
-          results[id] = {
-            adaptationDefinition: 'No information available',
-            regulatoryStatus: 'No information available',
-            technicalSpecificity: 'No information available',
-            energyStorageCriteria: 'No information available',
-            transportCriteria: 'No information available',
-            buildingCriteria: 'No information available',
-            waterCriteria: 'No information available',
-            implementationRequirements: 'No information available'
-          };
-        }
+    // Initialize all frameworks with empty objects
+    frameworkIds.forEach(id => {
+      results[id] = {};
+    });
+    
+    // Populate with comparison data
+    comparisons.forEach(row => {
+      if (!results[row.framework_id]) {
+        results[row.framework_id] = {};
       }
+      results[row.framework_id][row.criteria_key] = row.criteria_value;
+    });
+    
+    // For any frameworks without data, fetch basic info from framework_translations
+    const missingData = frameworkIds.filter(id => Object.keys(results[id]).length === 0);
+    
+    if (missingData.length > 0) {
+      const [basicData] = await pool.query(`
+        SELECT f.id, ft.adaptation_definition, ft.regulatory_status
+        FROM frameworks f
+        JOIN framework_translations ft ON f.id = ft.framework_id
+        WHERE f.id IN (?) AND ft.language_id = ?
+      `, [missingData, language]);
+      
+      basicData.forEach(framework => {
+        results[framework.id] = {
+          adaptationDefinition: framework.adaptation_definition || '',
+          regulatoryStatus: framework.regulatory_status || '',
+          technicalSpecificity: 'No detailed information available',
+          energyStorageCriteria: 'No detailed information available',
+          transportCriteria: 'No detailed information available',
+          buildingCriteria: 'No detailed information available',
+          waterCriteria: 'No detailed information available',
+          implementationRequirements: 'No detailed information available'
+        };
+      });
     }
     
     return res.json(results);
@@ -643,7 +641,7 @@ app.delete('/api/admin/frameworks/:id', authenticateToken, requireAdmin, async (
   }
 });
 
-// Update framework criteria for a sector
+// Update framework sector criteria
 app.put('/api/admin/frameworks/:id/sectors/:sectorId', authenticateToken, async (req, res) => {
   try {
     const { id, sectorId } = req.params;
@@ -687,6 +685,60 @@ app.put('/api/admin/frameworks/:id/sectors/:sectorId', authenticateToken, async 
     }
   } catch (error) {
     console.error('Error updating sector criteria:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update framework comparison data
+app.put('/api/admin/frameworks/:id/comparison', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { language, comparisonData } = req.body;
+    
+    if (!language || !comparisonData || typeof comparisonData !== 'object') {
+      return res.status(400).json({ error: 'Invalid comparison data format' });
+    }
+    
+    // Begin transaction
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+    
+    try {
+      // Delete existing comparison data for this framework and language
+      await connection.query(
+        'DELETE FROM framework_comparisons WHERE framework_id = ? AND language_id = ?',
+        [id, language]
+      );
+      
+      // Insert new comparison data
+      for (const [criteriaKey, criteriaValue] of Object.entries(comparisonData)) {
+        if (criteriaValue) {
+          await connection.query(
+            `INSERT INTO framework_comparisons
+             (framework_id, language_id, criteria_key, criteria_value)
+             VALUES (?, ?, ?, ?)`,
+            [id, language, criteriaKey, criteriaValue]
+          );
+        }
+      }
+      
+      // Add audit log entry
+      await connection.query(
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, changes)
+         VALUES (?, 'update', 'framework_comparison', ?, ?)`,
+        [req.user.id, `${id}_${language}`, JSON.stringify(req.body)]
+      );
+      
+      await connection.commit();
+      res.json({ message: 'Comparison data updated successfully' });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('Error updating comparison data:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -832,6 +884,168 @@ app.post('/api/admin/resources', authenticateToken, async (req, res) => {
     console.error('Error creating resource:', error);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// Update a resource
+app.put('/api/admin/resources/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { category, link_url, translations, display_order } = req.body;
+    
+    // Begin transaction
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+    
+    try {
+      // Update resource
+      await connection.query(
+        'UPDATE resources SET category = ?, link_url = ?, display_order = ? WHERE id = ?',
+        [category, link_url, display_order, id]
+      );
+      
+      // Update translations
+      for (const lang in translations) {
+        const { title, description } = translations[lang];
+        
+        // Check if translation exists
+        const [existingTranslations] = await connection.query(
+          'SELECT id FROM resource_translations WHERE resource_id = ? AND language_id = ?',
+          [id, lang]
+        );
+        
+        if (existingTranslations.length > 0) {
+          // Update existing translation
+          await connection.query(
+            `UPDATE resource_translations 
+             SET title = ?, description = ? 
+             WHERE resource_id = ? AND language_id = ?`,
+            [title, description, id, lang]
+          );
+        } else {
+          // Insert new translation
+          await connection.query(
+            `INSERT INTO resource_translations 
+             (resource_id, language_id, title, description) 
+             VALUES (?, ?, ?, ?)`,
+            [id, lang, title, description]
+          );
+        }
+      }
+      
+      await connection.commit();
+      res.json({ id });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('Error updating resource:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete a resource
+app.delete('/api/admin/resources/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    await pool.query('DELETE FROM resources WHERE id = ?', [id]);
+    
+    // Add audit log entry
+    await pool.query(
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id)
+       VALUES (?, 'delete', 'resource', ?)`,
+      [req.user.id, id]
+    );
+    
+    res.json({ message: 'Resource deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting resource:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Bulk import framework comparison data
+app.post('/api/admin/import/comparison-data', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { data, language } = req.body;
+    
+    if (!data || !language) {
+      return res.status(400).json({ error: 'Missing data or language' });
+    }
+    
+    // Begin transaction
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+    
+    try {
+      let importCount = 0;
+      
+      for (const [frameworkId, comparisonData] of Object.entries(data)) {
+        // Check if framework exists
+        const [frameworks] = await connection.query(
+          'SELECT id FROM frameworks WHERE id = ?',
+          [frameworkId]
+        );
+        
+        if (frameworks.length === 0) {
+          console.warn(`Framework ${frameworkId} does not exist in the database. Skipping.`);
+          continue;
+        }
+        
+        // Delete existing comparison data
+        await connection.query(
+          'DELETE FROM framework_comparisons WHERE framework_id = ? AND language_id = ?',
+          [frameworkId, language]
+        );
+        
+        // Insert new comparison data
+        for (const [criteriaKey, criteriaValue] of Object.entries(comparisonData)) {
+          if (criteriaValue) {
+            await connection.query(
+              `INSERT INTO framework_comparisons
+               (framework_id, language_id, criteria_key, criteria_value)
+               VALUES (?, ?, ?, ?)`,
+              [frameworkId, language, criteriaKey, criteriaValue]
+            );
+            
+            importCount++;
+          }
+        }
+      }
+      
+      // Add audit log entry
+      await connection.query(
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, changes)
+         VALUES (?, 'import', 'framework_comparison', 'bulk', ?)`,
+        [req.user.id, JSON.stringify({ language, count: importCount })]
+      );
+      
+      await connection.commit();
+      res.json({ message: `Successfully imported ${importCount} comparison data entries` });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error('Error importing comparison data:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', version: '1.0' });
 });
 
 // Start server
