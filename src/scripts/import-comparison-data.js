@@ -39,48 +39,42 @@ const dbConfig = {
   connectionLimit: 10
 };
 
-// Map CSV columns to database criteria keys
-const columnMapping = {
-  'Adaptation Definition': 'adaptationDefinition',
-  'Technical Specificity': 'technicalSpecificity',
-  'Regulatory Status': 'regulatoryStatus',
-  'Energy Storage Criteria': 'energyStorageCriteria',
-  'Transport Criteria': 'transportCriteria',
-  'Building Criteria': 'buildingCriteria',
-  'Water Criteria': 'waterCriteria',
-  'Implementation Requirements': 'implementationRequirements'
-};
-
-// Spanish column mappings
-const esColumnMapping = {
-  'Definición de Adaptación': 'adaptationDefinition',
-  'Especificidad Técnica': 'technicalSpecificity',
-  'Estado Regulatorio': 'regulatoryStatus',
-  'Criterios de Almacenamiento de Energía': 'energyStorageCriteria',
-  'Criterios de Transporte': 'transportCriteria',
-  'Criterios de Edificios': 'buildingCriteria',
-  'Criterios de Agua': 'waterCriteria',
-  'Requisitos de Implementación': 'implementationRequirements'
-};
-
-// Portuguese column mappings
-const ptColumnMapping = {
-  'Definição de Adaptação': 'adaptationDefinition',
-  'Especificidade Técnica': 'technicalSpecificity',
-  'Status Regulatório': 'regulatoryStatus',
-  'Critérios de Armazenamento de Energia': 'energyStorageCriteria',
-  'Critérios de Transporte': 'transportCriteria',
-  'Critérios de Edifícios': 'buildingCriteria',
-  'Critérios de Água': 'waterCriteria',
-  'Requisitos de Implementação': 'implementationRequirements'
-};
-
-// Select the appropriate column mapping based on language
+// Map CSV columns to database criteria keys based on language
 const getColumnMapping = (lang) => {
   switch(lang) {
-    case 'es': return esColumnMapping;
-    case 'pt': return ptColumnMapping;
-    default: return columnMapping;
+    case 'es': 
+      return {
+        'Definición de Adaptación': 'adaptationDefinition',
+        'Especificidad Técnica': 'technicalSpecificity',
+        'Estado Regulatorio': 'regulatoryStatus',
+        'Criterios de Almacenamiento de Energía': 'energyStorageCriteria',
+        'Criterios de Transporte': 'transportCriteria',
+        'Criterios de Edificios': 'buildingCriteria',
+        'Criterios de Agua': 'waterCriteria',
+        'Requisitos de Implementación': 'implementationRequirements'
+      };
+    case 'pt': 
+      return {
+        'Definição de Adaptação': 'adaptationDefinition',
+        'Especificidade Técnica': 'technicalSpecificity',
+        'Status Regulatório': 'regulatoryStatus',
+        'Critérios de Armazenamento de Energia': 'energyStorageCriteria',
+        'Critérios de Transporte': 'transportCriteria',
+        'Critérios de Edifícios': 'buildingCriteria',
+        'Critérios de Água': 'waterCriteria',
+        'Requisitos de Implementação': 'implementationRequirements'
+      };
+    default: 
+      return {
+        'Adaptation Definition': 'adaptationDefinition',
+        'Technical Specificity': 'technicalSpecificity',
+        'Regulatory Status': 'regulatoryStatus',
+        'Energy Storage Criteria': 'energyStorageCriteria',
+        'Transport Criteria': 'transportCriteria',
+        'Building Criteria': 'buildingCriteria',
+        'Water Criteria': 'waterCriteria',
+        'Implementation Requirements': 'implementationRequirements'
+      };
   }
 };
 
@@ -100,8 +94,19 @@ async function importComparisonData() {
     // Read CSV file
     await new Promise((resolve, reject) => {
       fs.createReadStream(filePath)
-        .pipe(csv())
-        .on('data', (data) => results.push(data))
+        .pipe(csv({
+          skipLines: 0,
+          headers: true,
+          trim: true
+        }))
+        .on('data', (data) => {
+          // Clean up data object by trimming whitespace from keys
+          const cleanData = {};
+          Object.entries(data).forEach(([key, value]) => {
+            cleanData[key.trim()] = value;
+          });
+          results.push(cleanData);
+        })
         .on('end', resolve)
         .on('error', reject);
     });
@@ -131,7 +136,8 @@ async function importComparisonData() {
     
     // Process each row
     for (const row of results) {
-      const frameworkId = row['framework_id'] || row['Framework ID'];
+      // Get framework ID - handle different possible column names
+      const frameworkId = row['framework_id'] || row['Framework ID'] || row['id'] || row['ID'];
       
       if (!frameworkId) {
         console.warn('Skipping row with no framework ID');
@@ -158,26 +164,32 @@ async function importComparisonData() {
       
       // Insert data for each criteria
       for (const [column, value] of Object.entries(row)) {
+        // Skip framework ID and name columns
         if (column === 'framework_id' || column === 'Framework ID' || 
-            column === 'framework_name' || column === 'Framework Name') {
+            column === 'framework_name' || column === 'Framework Name' || 
+            column === 'id' || column === 'ID' || column === 'name' || column === 'Name') {
           continue;
         }
         
-        const criteriaKey = mapping[column];
+        const criteriaKey = mapping[column.trim()];
         
         if (!criteriaKey) {
-          console.warn(`No mapping found for column: ${column}`);
+          console.warn(`No mapping found for column: '${column}'`);
           continue;
         }
         
-        if (value) {
-          await connection.query(`
-            INSERT INTO framework_comparisons 
-            (framework_id, language_id, criteria_key, criteria_value)
-            VALUES (?, ?, ?, ?)
-          `, [frameworkId, language, criteriaKey, value]);
-          
-          console.log(`Imported ${criteriaKey} data for ${frameworkId}`);
+        if (value && value.trim()) {
+          try {
+            await connection.query(`
+              INSERT INTO framework_comparisons 
+              (framework_id, language_id, criteria_key, criteria_value)
+              VALUES (?, ?, ?, ?)
+            `, [frameworkId, language, criteriaKey, value.trim()]);
+            
+            console.log(`Imported ${criteriaKey} data for ${frameworkId}`);
+          } catch (err) {
+            console.error(`Error importing ${criteriaKey} for ${frameworkId}:`, err.message);
+          }
         }
       }
     }
