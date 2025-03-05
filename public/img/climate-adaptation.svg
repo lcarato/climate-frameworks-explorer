@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">
+  <!-- Blue background representing water/oceans -->
+  <rect width="300" height="300" fill="#E5F6FD"/>
+  
+  <!-- Earth globe shape -->
+  <circle cx="150" cy="150" r="100" fill="#8CC63F" stroke="#3C8A2E" stroke-width="4"/>
+  
+  <!-- Adaptation arrows circling the globe -->
+  <g transform="translate(150, 150)" stroke="#F7B32B" stroke-width="8" fill="none" stroke-linecap="round">
+    <path d="M 0,-120 A 120,120 0 0,1 104,60" />
+    <path d="M 104,60 L 120,65 L 110,40" />
+    
+    <path d="M 0,120 A 120,120 0 0,1 -104,-60" />
+    <path d="M -104,-60 L -120,-65 L -110,-40" />
+  </g>
+  
+  <!-- Adaptation elements -->
+  <!-- Sun -->
+  <circle cx="230" cy="70" r="25" fill="#F7B32B"/>
+  <g fill="none" stroke="#F7B32B" stroke-width="3">
+    <line x1="230" y1="25" x2="230" y2="15"/>
+    <line x1="230" y1="125" x2="230" y2="115"/>
+    <line x1="185" y1="70" x2="175" y2="70"/>
+    <line x1="285" y1="70" x2="275" y2="70"/>
+    <line x1="197" y1="37" x2="190" y2="30"/>
+    <line x1="270" y1="110" x2="263" y2="103"/>
+    <line x1="197" y1="103" x2="190" y2="110"/>
+    <line x1="270" y1="30" x2="263" y2="37"/>
+  </g>
+  
+  <!-- Climate Frameworks Explorer text could be added here -->
+</svg>
