@@ -1,11 +1,12 @@
-// Frontend application component (src/components/ClimateFrameworksExplorer.jsx)
-
+// src/components/ClimateFrameworksExplorer.jsx
 import React, { useState, useEffect } from 'react';
 import { Search, ChevronDown, ChevronUp, Download, Edit, Info, Globe, Menu, X } from 'lucide-react';
 import FrameworkComparison from './FrameworkComparison';
 
 // Main application component
 const ClimateFrameworksExplorer = () => {
+  console.log('ClimateFrameworksExplorer component rendering');
+  
   const [language, setLanguage] = useState('en');
   const [activeTab, setActiveTab] = useState('home');
   const [frameworks, setFrameworks] = useState([]);
@@ -23,8 +24,11 @@ const ClimateFrameworksExplorer = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showComparison, setShowComparison] = useState(false);
+  const [loadingError, setLoadingError] = useState(null);
   
-  const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+  // Make sure to use port 3002 as discovered in debugging
+  const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:3002/api';
+  console.log('API Base URL being used:', apiBaseUrl);
   
   const translations = {
     en: {
@@ -244,38 +248,109 @@ const ClimateFrameworksExplorer = () => {
   // Load data based on selected language
   useEffect(() => {
     const loadData = async () => {
+      console.log('Starting to load data with language:', language);
       setIsLoading(true);
+      setLoadingError(null);
+      
       try {
         // Load frameworks
-        const frameworksResponse = await fetch(`${apiBaseUrl}/frameworks?lang=${language}`);
+        const frameworksUrl = `${apiBaseUrl}/frameworks?lang=${language}`;
+        console.log('Fetching frameworks from:', frameworksUrl);
+        
+        const frameworksResponse = await fetch(frameworksUrl);
+        console.log('Frameworks response status:', frameworksResponse.status);
+        
+        if (!frameworksResponse.ok) {
+          throw new Error(`Failed to fetch frameworks. Status: ${frameworksResponse.status}`);
+        }
+        
         const frameworksData = await frameworksResponse.json();
+        console.log('Frameworks data received:', frameworksData);
         setFrameworks(frameworksData);
         
         // Load sectors
-        const sectorsResponse = await fetch(`${apiBaseUrl}/sectors?lang=${language}`);
-        const sectorsData = await sectorsResponse.json();
-        setSectors(sectorsData);
+        console.log('Fetching sectors...');
+        const sectorsUrl = `${apiBaseUrl}/sectors?lang=${language}`;
+        const sectorsResponse = await fetch(sectorsUrl);
         
-        // Load news
-        const newsResponse = await fetch(`${apiBaseUrl}/news?lang=${language}`);
-        const newsData = await newsResponse.json();
-        setNews(newsData);
+        if (!sectorsResponse.ok) {
+          console.warn(`Failed to fetch sectors. Status: ${sectorsResponse.status}`);
+          setSectors([]);
+        } else {
+          const sectorsData = await sectorsResponse.json();
+          console.log('Sectors data received:', sectorsData);
+          setSectors(sectorsData);
+        }
         
-        // Load resources
-        const resourcesResponse = await fetch(`${apiBaseUrl}/resources?lang=${language}`);
-        const resourcesData = await resourcesResponse.json();
-        setResources(resourcesData);
+        // Load news - use sample data if API fails
+        try {
+          console.log('Fetching news...');
+          const newsUrl = `${apiBaseUrl}/news?lang=${language}`;
+          const newsResponse = await fetch(newsUrl);
+          
+          if (!newsResponse.ok) {
+            throw new Error(`Failed to fetch news. Status: ${newsResponse.status}`);
+          }
+          
+          const newsData = await newsResponse.json();
+          setNews(newsData);
+        } catch (newsError) {
+          console.warn('Error loading news, using placeholder data:', newsError);
+          // Set placeholder news data
+          setNews([
+            { id: 'news1', title: 'Climate Framework Updates', image_url: '/img/climate-adaptation.svg', link_url: '#' },
+            { id: 'news2', title: 'New TCFD Guidelines Released', image_url: '/img/climate-adaptation.svg', link_url: '#' },
+            { id: 'news3', title: 'EU Taxonomy Amendments', image_url: '/img/climate-adaptation.svg', link_url: '#' },
+            { id: 'news4', title: 'ASEAN Framework Adoption', image_url: '/img/climate-adaptation.svg', link_url: '#' }
+          ]);
+        }
+        
+        // Load resources - use sample data if API fails
+        try {
+          console.log('Fetching resources...');
+          const resourcesUrl = `${apiBaseUrl}/resources?lang=${language}`;
+          const resourcesResponse = await fetch(resourcesUrl);
+          
+          if (!resourcesResponse.ok) {
+            throw new Error(`Failed to fetch resources. Status: ${resourcesResponse.status}`);
+          }
+          
+          const resourcesData = await resourcesResponse.json();
+          setResources(resourcesData);
+        } catch (resourcesError) {
+          console.warn('Error loading resources, using placeholder data:', resourcesError);
+          // Set placeholder resources data
+          setResources([
+            { id: 'res1', title: 'Framework Comparison Guide', link_url: '#', category: 'guide' },
+            { id: 'res2', title: 'Climate Adaptation Assessment Tools', link_url: '#', category: 'tools' },
+            { id: 'res3', title: 'Investment Criteria Overview', link_url: '#', category: 'report' }
+          ]);
+        }
         
         // Reset framework details if language changes
         if (activeFramework) {
-          const detailsResponse = await fetch(`${apiBaseUrl}/frameworks/${activeFramework}?lang=${language}`);
-          const detailsData = await detailsResponse.json();
-          setFrameworkDetails(detailsData);
+          try {
+            console.log('Fetching framework details for:', activeFramework);
+            const detailsUrl = `${apiBaseUrl}/frameworks/${activeFramework}?lang=${language}`;
+            const detailsResponse = await fetch(detailsUrl);
+            
+            if (!detailsResponse.ok) {
+              throw new Error(`Failed to fetch framework details. Status: ${detailsResponse.status}`);
+            }
+            
+            const detailsData = await detailsResponse.json();
+            console.log('Framework details received:', detailsData);
+            setFrameworkDetails(detailsData);
+          } catch (detailsError) {
+            console.warn('Error loading framework details:', detailsError);
+            setFrameworkDetails(null);
+          }
         }
         
         setIsLoading(false);
       } catch (error) {
         console.error('Error loading data:', error);
+        setLoadingError(error.toString());
         setIsLoading(false);
       }
     };
@@ -284,6 +359,8 @@ const ClimateFrameworksExplorer = () => {
   }, [language, activeFramework, apiBaseUrl]);
   
   const handleFrameworkClick = async (frameworkId) => {
+    console.log('Framework clicked:', frameworkId);
+    
     if (compareMode) {
       if (selectedFrameworks.includes(frameworkId)) {
         setSelectedFrameworks(selectedFrameworks.filter(id => id !== frameworkId));
@@ -293,8 +370,18 @@ const ClimateFrameworksExplorer = () => {
     } else {
       setActiveFramework(frameworkId);
       try {
-        const response = await fetch(`${apiBaseUrl}/frameworks/${frameworkId}?lang=${language}`);
+        console.log('Fetching details for framework:', frameworkId);
+        const detailsUrl = `${apiBaseUrl}/frameworks/${frameworkId}?lang=${language}`;
+        console.log('Framework details URL:', detailsUrl);
+        
+        const response = await fetch(detailsUrl);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch framework details. Status: ${response.status}`);
+        }
+        
         const data = await response.json();
+        console.log('Framework details received:', data);
         setFrameworkDetails(data);
         setActiveDetailTab(0);
       } catch (error) {
@@ -304,6 +391,8 @@ const ClimateFrameworksExplorer = () => {
   };
   
   const handleSectorClick = async (sectorId) => {
+    console.log('Sector clicked:', sectorId);
+    
     if (sectorId === activeSector) {
       setActiveSector(null);
       return;
@@ -312,8 +401,18 @@ const ClimateFrameworksExplorer = () => {
     setActiveSector(sectorId);
     if (activeFramework) {
       try {
-        const response = await fetch(`${apiBaseUrl}/frameworks/${activeFramework}/sectors/${sectorId}?lang=${language}`);
+        console.log('Fetching sector criteria for:', sectorId);
+        const sectorUrl = `${apiBaseUrl}/frameworks/${activeFramework}/sectors/${sectorId}?lang=${language}`;
+        console.log('Sector criteria URL:', sectorUrl);
+        
+        const response = await fetch(sectorUrl);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch sector criteria. Status: ${response.status}`);
+        }
+        
         const data = await response.json();
+        console.log('Sector criteria received:', data);
         // Update sector criteria in framework details
         setFrameworkDetails({
           ...frameworkDetails,
@@ -327,6 +426,8 @@ const ClimateFrameworksExplorer = () => {
   
   // Handle comparison
   const handleCompareClick = () => {
+    console.log('Compare clicked with frameworks:', selectedFrameworks);
+    
     if (selectedFrameworks.length < 2) {
       alert(t.selectAtLeast);
       return;
@@ -350,8 +451,47 @@ const ClimateFrameworksExplorer = () => {
     framework.type.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Add a debug section at the top if there are issues
+  const renderDebugInfo = () => {
+    if (process.env.NODE_ENV === 'development') {
+      return (
+        <div style={{padding: '10px', background: '#f8f9fa', border: '1px solid #ddd', margin: '10px', fontSize: '12px'}}>
+          <h3>Debug Info:</h3>
+          <p>API URL: {apiBaseUrl}</p>
+          <p>Language: {language}</p>
+          <p>Frameworks count: {frameworks.length}</p>
+          <p>Loading: {isLoading ? 'Yes' : 'No'}</p>
+          {loadingError && (
+            <div style={{color: 'red'}}>
+              <p>Error: {loadingError}</p>
+            </div>
+          )}
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-white">
+      {/* Debug info in development */}
+      {renderDebugInfo()}
+      
+      {/* Add a simple fallback to show if things aren't loading correctly */}
+      {isLoading ? (
+        <div style={{padding: '20px', background: '#f0f0f0', margin: '20px'}}>
+          <h2>Loading data...</h2>
+        </div>
+      ) : frameworks.length === 0 ? (
+        <div style={{padding: '20px', background: '#f0f0f0', margin: '20px'}}>
+          <h2>No frameworks loaded</h2>
+          <p>API URL: {apiBaseUrl}</p>
+          <p>Language: {language}</p>
+          <p>This should not happen if the API is working correctly.</p>
+          {loadingError && <p>Error: {loadingError}</p>}
+        </div>
+      ) : null}
+      
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="container mx-auto px-4">
@@ -531,7 +671,7 @@ const ClimateFrameworksExplorer = () => {
                           onClick={() => setFilterOpen(!filterOpen)}
                           className="text-gray-500"
                         >
-                          {filterOpen ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+                        {filterOpen ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
                         </button>
                       </div>
                       
