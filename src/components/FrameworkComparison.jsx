@@ -1,5 +1,5 @@
 // src/components/FrameworkComparison.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Download, Info, ArrowLeft } from 'lucide-react';
 
 /**
@@ -23,26 +23,36 @@ const FrameworkComparison = ({
   
   const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
   
+  // Define all available criteria
+  const allCriteria = useMemo(() => [
+    { key: 'adaptationDefinition', label: t.adaptationDefinition },
+    { key: 'technicalSpecificity', label: t.technicalSpecificity },
+    { key: 'regulatoryStatus', label: t.regulatoryStatus },
+    { key: 'energyStorageCriteria', label: t.energyStorageCriteria },
+    { key: 'transportCriteria', label: t.transportCriteria },
+    { key: 'buildingCriteria', label: t.buildingCriteria },
+    { key: 'waterCriteria', label: t.waterCriteria },
+    { key: 'implementationRequirements', label: t.implementationRequirements }
+  ], [t]);
+  
   useEffect(() => {
     const loadComparisonData = async () => {
+      if (selectedFrameworks.length === 0) return;
+      
       setIsLoading(true);
       try {
-        // Create comparison data structure
-        const data = {};
+        // Use the optimized API endpoint to get all comparison data at once
+        const frameworkIds = selectedFrameworks.join(',');
+        const response = await fetch(
+          `${apiBaseUrl}/frameworks/compare?ids=${frameworkIds}&lang=${language}`
+        );
         
-        // Load comparison data for each framework
-        for (const frameworkId of selectedFrameworks) {
-          const response = await fetch(
-            `${apiBaseUrl}/frameworks/${frameworkId}/comparison?lang=${language}`
-          );
-          
-          if (response.ok) {
-            const frameworkData = await response.json();
-            data[frameworkId] = frameworkData;
-          }
+        if (response.ok) {
+          const data = await response.json();
+          setComparisonData(data);
+        } else {
+          console.error('Error response from comparison API:', await response.text());
         }
-        
-        setComparisonData(data);
         setIsLoading(false);
       } catch (error) {
         console.error('Error loading comparison data:', error);
@@ -50,27 +60,14 @@ const FrameworkComparison = ({
       }
     };
     
-    if (selectedFrameworks.length > 0) {
-      loadComparisonData();
-    }
+    loadComparisonData();
   }, [selectedFrameworks, language, apiBaseUrl]);
   
   // Download comparison data as CSV
   const downloadCSV = () => {
-    const criteria = [
-      { key: 'adaptationDefinition', label: t.adaptationDefinition },
-      { key: 'technicalSpecificity', label: t.technicalSpecificity },
-      { key: 'regulatoryStatus', label: t.regulatoryStatus },
-      { key: 'energyStorageCriteria', label: t.energyStorageCriteria },
-      { key: 'transportCriteria', label: t.transportCriteria },
-      { key: 'buildingCriteria', label: t.buildingCriteria },
-      { key: 'waterCriteria', label: t.waterCriteria },
-      { key: 'implementationRequirements', label: t.implementationRequirements }
-    ];
-    
     let csv = `Criteria,${selectedFrameworks.map(fId => frameworks.find(f => f.id === fId)?.name || fId).join(',')}\n`;
     
-    criteria.forEach(({ key, label }) => {
+    allCriteria.forEach(({ key, label }) => {
       const row = [label];
       
       selectedFrameworks.forEach(frameworkId => {
@@ -93,6 +90,7 @@ const FrameworkComparison = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url); // Clean up
   };
   
   // Toggle showing a criteria in the table
@@ -119,6 +117,7 @@ const FrameworkComparison = ({
           <button
             onClick={onClose}
             className="text-gray-600 hover:text-gray-900 mr-4"
+            aria-label="Back to frameworks"
           >
             <ArrowLeft size={20} />
           </button>
@@ -128,6 +127,7 @@ const FrameworkComparison = ({
         <button
           onClick={downloadCSV}
           className="flex items-center text-yellow-600 hover:text-yellow-800"
+          aria-label="Download CSV"
         >
           <Download size={18} className="mr-1" />
           <span className="text-sm">{t.download}</span>
@@ -137,194 +137,60 @@ const FrameworkComparison = ({
       <div className="bg-white p-4 rounded-lg shadow-sm mb-6">
         <h4 className="font-medium text-gray-900 mb-3">{t.criteriaToCompare}</h4>
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => toggleCriteria('adaptationDefinition')}
-            className={`px-3 py-1 text-sm rounded-full ${
-              criteriaToShow.includes('adaptationDefinition')
-                ? 'bg-yellow-100 text-yellow-800'
-                : 'bg-gray-100 text-gray-700'
-            }`}
-          >
-            {t.adaptationDefinition}
-          </button>
-          <button
-            onClick={() => toggleCriteria('technicalSpecificity')}
-            className={`px-3 py-1 text-sm rounded-full ${
-              criteriaToShow.includes('technicalSpecificity')
-                ? 'bg-yellow-100 text-yellow-800'
-                : 'bg-gray-100 text-gray-700'
-            }`}
-          >
-            {t.technicalSpecificity}
-          </button>
-          <button
-            onClick={() => toggleCriteria('regulatoryStatus')}
-            className={`px-3 py-1 text-sm rounded-full ${
-              criteriaToShow.includes('regulatoryStatus')
-                ? 'bg-yellow-100 text-yellow-800'
-                : 'bg-gray-100 text-gray-700'
-            }`}
-          >
-            {t.regulatoryStatus}
-          </button>
-          <button
-            onClick={() => toggleCriteria('energyStorageCriteria')}
-            className={`px-3 py-1 text-sm rounded-full ${
-              criteriaToShow.includes('energyStorageCriteria')
-                ? 'bg-yellow-100 text-yellow-800'
-                : 'bg-gray-100 text-gray-700'
-            }`}
-          >
-            {t.energyStorageCriteria}
-          </button>
-          <button
-            onClick={() => toggleCriteria('transportCriteria')}
-            className={`px-3 py-1 text-sm rounded-full ${
-              criteriaToShow.includes('transportCriteria')
-                ? 'bg-yellow-100 text-yellow-800'
-                : 'bg-gray-100 text-gray-700'
-            }`}
-          >
-            {t.transportCriteria}
-          </button>
-          <button
-            onClick={() => toggleCriteria('buildingCriteria')}
-            className={`px-3 py-1 text-sm rounded-full ${
-              criteriaToShow.includes('buildingCriteria')
-                ? 'bg-yellow-100 text-yellow-800'
-                : 'bg-gray-100 text-gray-700'
-            }`}
-          >
-            {t.buildingCriteria}
-          </button>
-          <button
-            onClick={() => toggleCriteria('waterCriteria')}
-            className={`px-3 py-1 text-sm rounded-full ${
-              criteriaToShow.includes('waterCriteria')
-                ? 'bg-yellow-100 text-yellow-800'
-                : 'bg-gray-100 text-gray-700'
-            }`}
-          >
-            {t.waterCriteria}
-          </button>
-          <button
-            onClick={() => toggleCriteria('implementationRequirements')}
-            className={`px-3 py-1 text-sm rounded-full ${
-              criteriaToShow.includes('implementationRequirements')
-                ? 'bg-yellow-100 text-yellow-800'
-                : 'bg-gray-100 text-gray-700'
-            }`}
-          >
-            {t.implementationRequirements}
-          </button>
+          {allCriteria.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => toggleCriteria(key)}
+              className={`px-3 py-1 text-sm rounded-full ${
+                criteriaToShow.includes(key)
+                  ? 'bg-yellow-100 text-yellow-800'
+                  : 'bg-gray-100 text-gray-700'
+              }`}
+              aria-pressed={criteriaToShow.includes(key)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
       
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                {t.criteria}
-              </th>
-              {selectedFrameworks.map(frameworkId => (
-                <th key={frameworkId} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {frameworks.find(f => f.id === frameworkId)?.name || frameworkId}
+      {Object.keys(comparisonData).length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12">
+          <Info size={36} className="text-gray-400 mb-4" />
+          <p className="text-gray-500 text-center">
+            {t.selectAtLeast}
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t.criteria}
                 </th>
+                {selectedFrameworks.map(frameworkId => (
+                  <th key={frameworkId} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    {frameworks.find(f => f.id === frameworkId)?.name || frameworkId}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {allCriteria.filter(({ key }) => criteriaToShow.includes(key)).map(({ key, label }) => (
+                <tr key={key}>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{label}</td>
+                  {selectedFrameworks.map(frameworkId => (
+                    <td key={frameworkId} className="px-4 py-3 text-sm text-gray-500">
+                      {comparisonData[frameworkId]?.[key] || ''}
+                    </td>
+                  ))}
+                </tr>
               ))}
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {criteriaToShow.includes('adaptationDefinition') && (
-              <tr>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{t.adaptationDefinition}</td>
-                {selectedFrameworks.map(frameworkId => (
-                  <td key={frameworkId} className="px-4 py-3 text-sm text-gray-500">
-                    {comparisonData[frameworkId]?.adaptationDefinition || ''}
-                  </td>
-                ))}
-              </tr>
-            )}
-            
-            {criteriaToShow.includes('technicalSpecificity') && (
-              <tr>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{t.technicalSpecificity}</td>
-                {selectedFrameworks.map(frameworkId => (
-                  <td key={frameworkId} className="px-4 py-3 text-sm text-gray-500">
-                    {comparisonData[frameworkId]?.technicalSpecificity || ''}
-                  </td>
-                ))}
-              </tr>
-            )}
-            
-            {criteriaToShow.includes('regulatoryStatus') && (
-              <tr>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{t.regulatoryStatus}</td>
-                {selectedFrameworks.map(frameworkId => (
-                  <td key={frameworkId} className="px-4 py-3 text-sm text-gray-500">
-                    {comparisonData[frameworkId]?.regulatoryStatus || ''}
-                  </td>
-                ))}
-              </tr>
-            )}
-            
-            {criteriaToShow.includes('energyStorageCriteria') && (
-              <tr>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{t.energyStorageCriteria}</td>
-                {selectedFrameworks.map(frameworkId => (
-                  <td key={frameworkId} className="px-4 py-3 text-sm text-gray-500">
-                    {comparisonData[frameworkId]?.energyStorageCriteria || ''}
-                  </td>
-                ))}
-              </tr>
-            )}
-            
-            {criteriaToShow.includes('transportCriteria') && (
-              <tr>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{t.transportCriteria}</td>
-                {selectedFrameworks.map(frameworkId => (
-                  <td key={frameworkId} className="px-4 py-3 text-sm text-gray-500">
-                    {comparisonData[frameworkId]?.transportCriteria || ''}
-                  </td>
-                ))}
-              </tr>
-            )}
-            
-            {criteriaToShow.includes('buildingCriteria') && (
-              <tr>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{t.buildingCriteria}</td>
-                {selectedFrameworks.map(frameworkId => (
-                  <td key={frameworkId} className="px-4 py-3 text-sm text-gray-500">
-                    {comparisonData[frameworkId]?.buildingCriteria || ''}
-                  </td>
-                ))}
-              </tr>
-            )}
-            
-            {criteriaToShow.includes('waterCriteria') && (
-              <tr>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{t.waterCriteria}</td>
-                {selectedFrameworks.map(frameworkId => (
-                  <td key={frameworkId} className="px-4 py-3 text-sm text-gray-500">
-                    {comparisonData[frameworkId]?.waterCriteria || ''}
-                  </td>
-                ))}
-              </tr>
-            )}
-            
-            {criteriaToShow.includes('implementationRequirements') && (
-              <tr>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{t.implementationRequirements}</td>
-                {selectedFrameworks.map(frameworkId => (
-                  <td key={frameworkId} className="px-4 py-3 text-sm text-gray-500">
-                    {comparisonData[frameworkId]?.implementationRequirements || ''}
-                  </td>
-                ))}
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
